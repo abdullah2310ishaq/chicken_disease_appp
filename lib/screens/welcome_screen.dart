@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
-import '../widgets/gradient_button.dart';
 import 'chat_screen.dart';
 import 'about_screen.dart';
 import 'tips_tricks_screen.dart';
 import 'disease_database_screen.dart';
 import 'image_selection_screen.dart';
-import 'history_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -157,6 +155,29 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                                   ],
                                 ),
                                 const SizedBox(height: 24),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      _showEditProfileDialog(context);
+                                    },
+                                    icon: const Icon(Icons.edit_rounded),
+                                    label: const Text('Edit Profile'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 16),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton.icon(
@@ -362,34 +383,13 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   child: Column(
                     children: [
                       // First Row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildFeatureCard(
-                              context,
-                              Icons.history_rounded,
-                              'History',
-                              Colors.blue,
-                              () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const HistoryScreen(),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
                       // Second Row
                       Row(
                         children: [
                           Expanded(
                             child: _buildFeatureCard(
                               context,
-                              Icons.mic,
+                              Icons.chat_bubble_rounded,
                               'Chatbot',
                               Colors.teal,
                               () {
@@ -466,6 +466,245 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEditProfileDialog(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final currentName = user?.displayName ?? '';
+    final nameController = TextEditingController(text: currentName);
+    bool _isUpdating = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  Theme.of(context).colorScheme.background,
+                ],
+              ),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header with icon
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.edit_rounded,
+                      size: 40,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Title
+                  Text(
+                    'Edit Profile',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Update your name',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Name input field
+                  TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Full Name',
+                      hintText: 'Enter your full name',
+                      prefixIcon: Icon(
+                        Icons.person_outline_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2,
+                        ),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _isUpdating
+                              ? null
+                              : () {
+                                  Navigator.pop(context);
+                                },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            side: BorderSide(
+                              color: Colors.grey[300]!,
+                            ),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _isUpdating
+                              ? null
+                              : () async {
+                                  if (nameController.text.trim().isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Please enter your name'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                    return;
+                                  }
+
+                                  setDialogState(() {
+                                    _isUpdating = true;
+                                  });
+
+                                  try {
+                                    await _authService.updateProfile(
+                                      nameController.text.trim(),
+                                    );
+                                    
+                                    // Reload user to get updated name
+                                    await FirebaseAuth.instance.currentUser?.reload();
+                                    
+                                    if (context.mounted) {
+                                      Navigator.pop(context);
+                                      setState(() {}); // Refresh welcome screen
+                                      
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.check_circle,
+                                                color: Colors.white,
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Text(
+                                                  'Profile updated successfully!',
+                                                  style: const TextStyle(fontSize: 16),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          backgroundColor: Colors.green,
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          duration: const Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    setDialogState(() {
+                                      _isUpdating = false;
+                                    });
+                                    
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Error: $e'),
+                                          backgroundColor: Colors.red,
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 2,
+                          ),
+                          child: _isUpdating
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Update',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

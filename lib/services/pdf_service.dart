@@ -26,9 +26,12 @@ class PDFService {
     try {
       // Get AI-powered suggestions from Gemini if available
       List<String> finalRecommendations = result.recommendations;
+      DiseaseDetails? diseaseDetails;
+      
       final geminiService = _geminiService;
       if (geminiService != null && geminiService.isInitialized) {
         try {
+          // Get recommendations
           final aiSuggestions = await geminiService.getDiseaseSuggestions(
             diseaseType: result.diseaseType,
             confidence: result.confidence,
@@ -49,6 +52,19 @@ class PDFService {
                 })
                 .where((rec) => rec.isNotEmpty)
                 .toList();
+          }
+          
+          // Get detailed disease information (only for diseases, not healthy)
+          if (!result.isHealthy) {
+            try {
+              diseaseDetails = await geminiService.getDiseaseDetails(
+                diseaseType: result.diseaseType,
+                confidence: result.confidence,
+                isHealthy: result.isHealthy,
+              );
+            } catch (e) {
+              print('Failed to get disease details: $e');
+            }
           }
         } catch (e) {
           print('Failed to get Gemini suggestions: $e');
@@ -79,7 +95,7 @@ class PDFService {
         isIrrelevant: result.isIrrelevant,
       );
 
-      final pdf = await _createPDF(enhancedResult, images, patientName);
+      final pdf = await _createPDF(enhancedResult, images, patientName, diseaseDetails);
 
       // Save PDF to file
       final directory = await getApplicationDocumentsDirectory();
@@ -124,6 +140,7 @@ class PDFService {
     DiseaseAnalysisResult result,
     List<File> images,
     String? patientName,
+    DiseaseDetails? diseaseDetails,
   ) async {
     final pdf = pw.Document();
     final now = DateTime.now();
@@ -154,6 +171,12 @@ class PDFService {
             // Recommendations
             _buildRecommendations(result.recommendations),
             pw.SizedBox(height: 20),
+
+            // Disease Details (Diagnosis, Medication, Vaccine, Care)
+            if (diseaseDetails != null && !result.isHealthy)
+              _buildDiseaseDetailsSection(diseaseDetails),
+            if (diseaseDetails != null && !result.isHealthy)
+              pw.SizedBox(height: 20),
 
             // Analysis Details
             if (result.analysisDetails.isNotEmpty)
@@ -430,6 +453,94 @@ class PDFService {
                   ],
                 ),
               )),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildDiseaseDetailsSection(DiseaseDetails details) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(15),
+      decoration: pw.BoxDecoration(
+        color: const PdfColor.fromInt(0xFFF3E5F5), // purple50
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFF9C27B0), // purple500
+          width: 1,
+        ),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'Detailed Disease Information',
+            style: pw.TextStyle(
+              fontSize: 16,
+              fontWeight: pw.FontWeight.bold,
+              color: const PdfColor.fromInt(0xFF9C27B0),
+            ),
+          ),
+          pw.SizedBox(height: 15),
+          
+          // Diagnosis
+          _buildDetailSubsection('Diagnosis', details.diagnosis),
+          pw.SizedBox(height: 12),
+          
+          // Medication
+          _buildDetailSubsection('Medication', details.medication),
+          pw.SizedBox(height: 12),
+          
+          // Vaccines
+          _buildDetailSubsection('Vaccines', details.vaccines),
+          pw.SizedBox(height: 12),
+          
+          // Care Instructions
+          _buildDetailSubsection('Care Instructions', details.careInstructions),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _buildDetailSubsection(String title, dynamic content) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            title,
+            style: pw.TextStyle(
+              fontSize: 13,
+              fontWeight: pw.FontWeight.bold,
+              color: const PdfColor.fromInt(0xFF7B1FA2),
+            ),
+          ),
+          pw.SizedBox(height: 6),
+          if (content is String)
+            pw.Text(
+              content,
+              style: const pw.TextStyle(fontSize: 10),
+            )
+          else if (content is List<String>)
+            ...content.map((item) => pw.Padding(
+                  padding: const pw.EdgeInsets.only(bottom: 3),
+                  child: pw.Row(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('• ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.Expanded(
+                        child: pw.Text(
+                          item,
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
         ],
       ),
     );

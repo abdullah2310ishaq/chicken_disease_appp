@@ -192,9 +192,14 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const CircularProgressIndicator(
-                color: Color(0xFF4CAF50),
-                strokeWidth: 5,
+              // Animated GIF
+              SizedBox(
+                width: 250,
+                height: 250,
+                child: Image.asset(
+                  'assets/gif.gif',
+                  fit: BoxFit.contain,
+                ),
               ),
               const SizedBox(height: 32),
               Text(
@@ -202,27 +207,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: Colors.grey[700],
+                      fontWeight: FontWeight.w600,
                     ),
               ),
-              const SizedBox(height: 16),
-              if (_isInitialized)
-                Text(
-                  'Processing image with AI...',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey[500],
-                        fontStyle: FontStyle.italic,
-                      ),
-                )
-              else
-                Text(
-                  'This may take a few moments...',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey[500],
-                        fontStyle: FontStyle.italic,
-                      ),
-                ),
             ],
           ),
         ),

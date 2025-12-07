@@ -90,7 +90,7 @@ class GeminiChatService {
           : 'For a chicken diagnosed with $diseaseType (confidence: ${(confidence * 100).toStringAsFixed(1)}%), provide 5 specific, actionable treatment and care recommendations. Include immediate actions, medication if needed, isolation procedures, and follow-up care. Keep each recommendation concise (one line). Format as a numbered list. Do not use any markdown formatting, asterisks, or emojis. Use plain text only.';
 
       final response = await sendMessage(prompt);
-
+      
       // Parse response into list
       final suggestions = response
           .split('\n')
@@ -107,6 +107,235 @@ class GeminiChatService {
     } catch (e) {
       print('Gemini suggestions failed: $e');
       return _getDefaultRecommendations(diseaseType);
+    }
+  }
+
+  /// Get detailed disease information including diagnosis, medication, vaccine, and care
+  Future<DiseaseDetails> getDiseaseDetails({
+    required String diseaseType,
+    required double confidence,
+    required bool isHealthy,
+  }) async {
+    if (!_initialized || isHealthy) {
+      return DiseaseDetails(
+        diagnosis: 'Your chicken appears to be in good health.',
+        medication: ['No medication required for healthy birds'],
+        vaccines: ['Continue regular vaccination schedule as per veterinary advice'],
+        careInstructions: [
+          'Maintain clean and dry environment',
+          'Provide balanced nutrition',
+          'Regular health monitoring',
+          'Ensure proper ventilation',
+        ],
+      );
+    }
+
+    try {
+      final prompt = '''
+For a chicken diagnosed with $diseaseType (confidence: ${(confidence * 100).toStringAsFixed(1)}%), provide comprehensive information in the following format:
+
+DIAGNOSIS:
+[Provide a brief 2-3 sentence explanation of what this disease is and what it means for the chicken]
+
+MEDICATION:
+[List 3-5 specific medications or treatments, one per line, with dosage if applicable. Format as numbered list without numbers]
+
+VACCINES:
+[List 2-4 relevant vaccines or vaccination schedules, one per line. Format as numbered list without numbers]
+
+CARE INSTRUCTIONS:
+[List 5-7 detailed care instructions covering isolation, environment, feeding, monitoring, etc., one per line. Format as numbered list without numbers]
+
+IMPORTANT: 
+- Do not use markdown formatting, asterisks, emojis, or special characters
+- Use plain text only
+- Each section should start with the section name followed by colon
+- List items should be on separate lines
+- Be specific and practical
+''';
+
+      final response = await sendMessage(prompt);
+      
+      return _parseDiseaseDetails(response, diseaseType);
+    } catch (e) {
+      print('Failed to get disease details from Gemini: $e');
+      return _getDefaultDiseaseDetails(diseaseType);
+    }
+  }
+
+  DiseaseDetails _parseDiseaseDetails(String response, String diseaseType) {
+    try {
+      // Split response into sections
+      final lines = response.split('\n').where((l) => l.trim().isNotEmpty).toList();
+      
+      String diagnosis = '';
+      List<String> medication = [];
+      List<String> vaccines = [];
+      List<String> careInstructions = [];
+      
+      String currentSection = '';
+      
+      for (final line in lines) {
+        final trimmed = line.trim();
+        
+        if (trimmed.toUpperCase().startsWith('DIAGNOSIS:')) {
+          currentSection = 'diagnosis';
+          diagnosis = trimmed.substring('DIAGNOSIS:'.length).trim();
+        } else if (trimmed.toUpperCase().startsWith('MEDICATION:')) {
+          currentSection = 'medication';
+        } else if (trimmed.toUpperCase().startsWith('VACCINES:')) {
+          currentSection = 'vaccines';
+        } else if (trimmed.toUpperCase().startsWith('CARE INSTRUCTIONS:') || 
+                   trimmed.toUpperCase().startsWith('CARE:')) {
+          currentSection = 'care';
+        } else if (trimmed.isNotEmpty) {
+          // Remove numbering and special characters
+          final cleanLine = trimmed
+              .replaceFirst(RegExp(r'^\d+[\.\)]\s*'), '')
+              .replaceAll(RegExp(r'[^\x00-\x7F]'), '')
+              .replaceAll(RegExp(r'\*\*'), '')
+              .replaceAll(RegExp(r'\*'), '')
+              .trim();
+          
+          if (cleanLine.isNotEmpty) {
+            switch (currentSection) {
+              case 'diagnosis':
+                if (diagnosis.isEmpty) {
+                  diagnosis = cleanLine;
+                } else {
+                  diagnosis += ' $cleanLine';
+                }
+                break;
+              case 'medication':
+                medication.add(cleanLine);
+                break;
+              case 'vaccines':
+                vaccines.add(cleanLine);
+                break;
+              case 'care':
+                careInstructions.add(cleanLine);
+                break;
+            }
+          }
+        }
+      }
+      
+      // Ensure we have at least default values
+      if (diagnosis.isEmpty) {
+        diagnosis = 'Disease detected: $diseaseType. Please consult a veterinarian for proper diagnosis and treatment.';
+      }
+      if (medication.isEmpty) {
+        medication = ['Consult veterinarian for appropriate medication'];
+      }
+      if (vaccines.isEmpty) {
+        vaccines = ['Follow vaccination schedule as advised by veterinarian'];
+      }
+      if (careInstructions.isEmpty) {
+        careInstructions = ['Isolate affected birds', 'Maintain clean environment', 'Monitor closely'];
+      }
+      
+      return DiseaseDetails(
+        diagnosis: diagnosis,
+        medication: medication,
+        vaccines: vaccines,
+        careInstructions: careInstructions,
+      );
+    } catch (e) {
+      print('Error parsing disease details: $e');
+      return _getDefaultDiseaseDetails(diseaseType);
+    }
+  }
+
+  DiseaseDetails _getDefaultDiseaseDetails(String diseaseType) {
+    switch (diseaseType) {
+      case 'Coccidiosis':
+        return DiseaseDetails(
+          diagnosis: 'Coccidiosis is a parasitic disease caused by protozoa that affects the intestinal tract of chickens, leading to diarrhea, weight loss, and reduced growth.',
+          medication: [
+            'Amprolium (0.012-0.024% in feed for 5-7 days)',
+            'Sulfadimethoxine (0.05% in water for 3-5 days)',
+            'Toltrazuril (7 mg/kg body weight)',
+            'Consult veterinarian for proper dosage',
+          ],
+          vaccines: [
+            'Live attenuated coccidiosis vaccines available for day-old chicks',
+            'Administer at 1-3 days of age via spray or gel',
+            'Requires proper management for vaccine to work effectively',
+          ],
+          careInstructions: [
+            'Isolate affected birds immediately to prevent spread',
+            'Maintain clean, dry litter and replace frequently',
+            'Ensure adequate ventilation to reduce moisture',
+            'Provide clean, fresh water at all times',
+            'Monitor feed intake and body weight daily',
+            'Disinfect housing and equipment thoroughly',
+            'Avoid overcrowding to reduce stress',
+          ],
+        );
+      case 'Newcastle Disease':
+        return DiseaseDetails(
+          diagnosis: 'Newcastle Disease is a highly contagious viral disease that can cause severe respiratory, nervous, and digestive symptoms in chickens. It can be fatal if not properly managed.',
+          medication: [
+            'No specific antiviral treatment available',
+            'Supportive care with antibiotics for secondary infections',
+            'Vitamin supplements to boost immune system',
+            'Fluid therapy for dehydrated birds',
+            'Consult veterinarian immediately for proper care',
+          ],
+          vaccines: [
+            'Live vaccines (B1, LaSota) - administer at 1-3 days old',
+            'Inactivated vaccines - booster at 4-6 weeks',
+            'Annual revaccination recommended',
+            'Follow proper vaccination schedule as per veterinary advice',
+          ],
+          careInstructions: [
+            'URGENT: Isolate all affected birds immediately',
+            'Quarantine entire flock and restrict movement',
+            'Report to local veterinary authorities if required',
+            'Maintain strict biosecurity measures',
+            'Provide supportive care and comfortable environment',
+            'Monitor for respiratory distress and provide ventilation',
+            'Dispose of dead birds properly and disinfect all equipment',
+          ],
+        );
+      case 'Salmonella':
+        return DiseaseDetails(
+          diagnosis: 'Salmonellosis is a bacterial infection that can affect both chickens and humans. It causes diarrhea, reduced egg production, and can be a public health concern.',
+          medication: [
+            'Antibiotics: Enrofloxacin (10-15 mg/kg for 5 days)',
+            'Ampicillin (20-40 mg/kg for 5-7 days)',
+            'Trimethoprim-sulfamethoxazole as per veterinary prescription',
+            'Probiotics to restore gut flora after treatment',
+            'Consult veterinarian for proper antibiotic selection',
+          ],
+          vaccines: [
+            'Salmonella vaccines available for breeder flocks',
+            'Administer as per manufacturer guidelines',
+            'Regular vaccination helps prevent infection',
+            'Follow biosecurity measures alongside vaccination',
+          ],
+          careInstructions: [
+            'Isolate infected birds to prevent spread',
+            'Maintain strict hygiene and sanitation',
+            'Disinfect feed and water containers daily',
+            'Control rodents and insects that can carry bacteria',
+            'Practice good biosecurity and limit visitors',
+            'Monitor egg production and quality',
+            'Wash hands thoroughly after handling birds',
+          ],
+        );
+      default:
+        return DiseaseDetails(
+          diagnosis: 'Disease detected: $diseaseType. Please consult a veterinarian for proper diagnosis and treatment plan.',
+          medication: ['Consult veterinarian for appropriate medication'],
+          vaccines: ['Follow vaccination schedule as advised by veterinarian'],
+          careInstructions: [
+            'Isolate affected birds',
+            'Maintain clean environment',
+            'Monitor closely for changes',
+            'Consult veterinarian immediately',
+          ],
+        );
     }
   }
 
@@ -251,4 +480,19 @@ class GeminiChatService {
   void dispose() {
     // nothing to dispose currently; placeholder for future resources
   }
+}
+
+/// Detailed disease information structure
+class DiseaseDetails {
+  final String diagnosis;
+  final List<String> medication;
+  final List<String> vaccines;
+  final List<String> careInstructions;
+
+  DiseaseDetails({
+    required this.diagnosis,
+    required this.medication,
+    required this.vaccines,
+    required this.careInstructions,
+  });
 }

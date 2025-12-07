@@ -61,6 +61,28 @@ class AuthService {
     await _auth.signOut();
   }
 
+  // Update user profile (name)
+  Future<void> updateProfile(String fullName) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('No user logged in');
+      }
+
+      // Update display name in Firebase Auth
+      await user.updateDisplayName(fullName);
+      await user.reload();
+
+      // Update name in Firestore
+      await _firestore.collection('users').doc(user.uid).update({
+        'fullName': fullName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to update profile: $e');
+    }
+  }
+
   // Reset password
   Future<void> resetPassword(String email) async {
     try {
