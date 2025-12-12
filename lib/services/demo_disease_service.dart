@@ -6,20 +6,27 @@ import '../services/chicken_disease_service.dart';
 /// Perfect for FYP demo - no Python/Colab needed!
 class DemoDiseaseService {
   static final Random _random = Random();
-  
+
   /// Simulate your trained model analysis
   Future<DiseaseAnalysisResult> analyzeFecesImage(File imageFile) async {
     // Simulate processing time (like your 10GB model would take)
     await Future.delayed(const Duration(seconds: 2));
-    
+
     // Generate realistic demo results (only 4 diseases matching TFLite model)
-    final diseases = ['Healthy', 'Coccidiosis', 'Newcastle Disease', 'Salmonella'];
+    final diseases = [
+      'Healthy',
+      'Coccidiosis',
+      'Newcastle Disease',
+      'Salmonella'
+    ];
     final selectedDisease = diseases[_random.nextInt(diseases.length)];
     final confidence = 0.75 + (_random.nextDouble() * 0.2); // 75-95% confidence
-    
-    // Check if irrelevant (confidence < 80%)
-    final isIrrelevant = confidence < 0.8;
-    
+
+    // Don't mark as irrelevant if Gemini already confirmed it's faeces
+    // Only mark as irrelevant if confidence is very low (< 50%)
+    final isIrrelevant =
+        false; // Let TFLite model handle this, not demo service
+
     return DiseaseAnalysisResult(
       diseaseType: selectedDisease,
       confidence: confidence,
@@ -29,7 +36,7 @@ class DemoDiseaseService {
       isIrrelevant: isIrrelevant,
     );
   }
-  
+
   List<String> _getDemoRecommendations(String diseaseType) {
     switch (diseaseType) {
       case 'Healthy':
@@ -67,11 +74,17 @@ class DemoDiseaseService {
         return ['Consult with veterinarian for proper diagnosis'];
     }
   }
-  
-  Map<String, double> _getDemoAnalysisDetails(String diseaseType, double confidence) {
+
+  Map<String, double> _getDemoAnalysisDetails(
+      String diseaseType, double confidence) {
     final details = <String, double>{};
-    final diseases = ['Healthy', 'Coccidiosis', 'Newcastle Disease', 'Salmonella'];
-    
+    final diseases = [
+      'Healthy',
+      'Coccidiosis',
+      'Newcastle Disease',
+      'Salmonella'
+    ];
+
     for (final disease in diseases) {
       if (disease == diseaseType) {
         details[disease] = confidence;
@@ -80,10 +93,10 @@ class DemoDiseaseService {
         details[disease] = _random.nextDouble() * 0.3;
       }
     }
-    
+
     return details;
   }
-  
+
   /// Get demo model info
   String getModelInfo() {
     return '''

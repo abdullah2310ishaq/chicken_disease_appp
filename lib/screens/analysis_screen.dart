@@ -27,18 +27,28 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
   }
 
   Future<void> _initializeAndAnalyze() async {
+    print('');
+    print('🎬 ========== ANALYSIS SCREEN: STARTING ANALYSIS ==========');
+    print('📸 Image path: ${widget.image1.path}');
+    print('📏 Image size: ${await widget.image1.length()} bytes');
+
     try {
       // Initialize the service (loads TFLite model)
+      print('⏳ Step 1: Initializing disease service (loading TFLite model)...');
       setState(() {
         _statusMessage = 'Loading AI model...';
       });
 
+      final initStart = Stopwatch()..start();
       await _diseaseService.initialize();
+      initStart.stop();
+      print('✅ Service initialized in ${initStart.elapsedMilliseconds}ms');
 
       setState(() {
         _isInitialized = true;
         _statusMessage = 'Analyzing image...';
       });
+      print('⏳ Step 2: Analyzing image with TFLite model...');
 
       // Show SnackBar when starting analysis (will be confirmed by Gemini)
       // if (mounted) {
@@ -52,16 +62,30 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       // }
 
       // Analyze image
+      final analysisStart = Stopwatch()..start();
       final result = await _diseaseService.analyzeImage(widget.image1);
+      analysisStart.stop();
+      print(
+          '✅ Image analysis completed in ${analysisStart.elapsedMilliseconds}ms');
+      print('📊 Analysis result:');
+      print('   └─ Disease type: ${result.diseaseType}');
+      print(
+          '   └─ Confidence: ${(result.confidence * 100).toStringAsFixed(2)}%');
+      print('   └─ Is healthy: ${result.isHealthy}');
+      print('   └─ Is irrelevant: ${result.isIrrelevant}');
+      print('   └─ Recommendations count: ${result.recommendations.length}');
+      print('   └─ Analysis details count: ${result.analysisDetails.length}');
 
       // Check for irrelevant image
       if (result.isIrrelevant) {
+        print('⚠️ Image is irrelevant, showing dialog...');
         if (mounted) {
           _showIrrelevantImageDialog();
           return;
         }
       }
 
+      print('⏳ Step 3: Navigating to result screen...');
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -73,8 +97,16 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
             ),
           ),
         );
+        print('✅ Navigation completed');
+        print('🎉 ========== ANALYSIS SCREEN: COMPLETE ==========');
+        print('');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ ========== ANALYSIS SCREEN: ERROR ==========');
+      print('❌ Error: $e');
+      print('❌ Stack trace: $stackTrace');
+      print('');
+
       if (mounted) {
         setState(() {
           _statusMessage = 'Analysis failed: $e';
@@ -88,6 +120,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
               SnackBar(
                 content: Text('Analysis failed: $e'),
                 backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
               ),
             );
           }
