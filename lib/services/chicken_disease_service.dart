@@ -77,6 +77,9 @@ class ChickenDiseaseService {
     return await demoService.analyzeFecesImage(imageFile);
   }
 
+  /// Check if TFLite model is initialized
+  bool get isInitialized => _isInitialized;
+
   /// Dispose resources
   void dispose() {
     _classifier?.dispose();

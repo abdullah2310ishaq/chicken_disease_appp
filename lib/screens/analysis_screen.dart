@@ -17,7 +17,6 @@ class AnalysisScreen extends StatefulWidget {
 
 class _AnalysisScreenState extends State<AnalysisScreen> {
   final ChickenDiseaseService _diseaseService = ChickenDiseaseService();
-  bool _isInitialized = false;
   String _statusMessage = 'Initializing model...';
 
   @override
@@ -36,7 +35,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       // Initialize the service (loads TFLite model)
       print('⏳ Step 1: Initializing disease service (loading TFLite model)...');
       setState(() {
-        _statusMessage = 'Loading AI model...';
+        _statusMessage = 'Loading TFLite model...';
       });
 
       final initStart = Stopwatch()..start();
@@ -44,9 +43,14 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       initStart.stop();
       print('✅ Service initialized in ${initStart.elapsedMilliseconds}ms');
 
+      // Verify TFLite is initialized
+      if (!_diseaseService.isInitialized) {
+        throw Exception(
+            'TFLite model failed to initialize. Please check model file and try again.');
+      }
+
       setState(() {
-        _isInitialized = true;
-        _statusMessage = 'Analyzing image...';
+        _statusMessage = 'Analyzing image with TFLite...';
       });
       print('⏳ Step 2: Analyzing image with TFLite model...');
 

@@ -9,16 +9,14 @@ import 'gemini_chat_service.dart';
 
 /// TensorFlow Lite image classifier for chicken disease detection
 class TFLiteImageClassifier {
-  static const String _modelPath = 'assets/model.tflite';
+  static const String _modelPath = 'assets/models/models/final_model_float32.tflite';
   static const String _labelsPath = 'assets/labels.txt';
 
-  // Model input size - will be auto-detected from model, default to 300
-  int inputSize =
-      300; // Default, will be updated from model during initialization
+  // Model input size - 300x300 as per model contract
+  int inputSize = 300; // Fixed to 300x300 as specified in model contract
 
-  // Model type detection - quantized models use uint8 (0-255), float models use float32 (0.0-1.0)
-  bool _isQuantized =
-      false; // Will be auto-detected from model during initialization
+  // Model type: Float32 model, pixel values 0.0-255.0 (NOT normalized)
+  bool _isQuantized = false; // Float32 model
 
   Interpreter? _interpreter;
   List<String> _labels = [];
@@ -30,6 +28,7 @@ class TFLiteImageClassifier {
     'cocci': 'Coccidiosis',
     'healthy': 'Healthy',
     'ncd': 'Newcastle Disease',
+    'random': 'Random/Irrelevant',
     'salmo': 'Salmonella',
   };
 
@@ -75,18 +74,17 @@ class TFLiteImageClassifier {
       print('   └─ Output type: ${outputTensors[0].type}');
       print('   └─ Output name: ${outputTensors[0].name}');
 
-      // Auto-detect input size from model
+      // Verify input size matches model contract (300x300)
       final modelInputShape = inputTensors[0].shape;
       if (modelInputShape.length >= 3) {
         // Shape is [1, height, width, 3] or similar
         final detectedSize =
             modelInputShape[1]; // Get height (should equal width)
         if (detectedSize != inputSize) {
-          print('   └─ ⚠️ Model expects different input size!');
-          print('      └─ Current code uses: ${inputSize}x${inputSize}');
-          print('      └─ Model expects: ${detectedSize}x${detectedSize}');
-          inputSize = detectedSize; // Update to match model
-          print('      └─ ✅ Updated inputSize to: ${inputSize}x${inputSize}');
+          print('   └─ ⚠️ Model shape indicates different size!');
+          print('      └─ Model contract specifies: ${inputSize}x${inputSize}');
+          print('      └─ Model tensor shape: ${detectedSize}x${detectedSize}');
+          print('      └─ ⚠️ Using contract size: ${inputSize}x${inputSize}');
         } else {
           print('   └─ ✅ Input size matches model: ${inputSize}x${inputSize}');
         }
@@ -107,13 +105,14 @@ class TFLiteImageClassifier {
       print('📊 LABEL INFORMATION:');
       print('   └─ Total labels: ${_labels.length}');
       print('   └─ Label order: ${_labels.join(", ")}');
-      print('   └─ Expected order: cocci, healthy, ncd, salmo');
+      print('   └─ Expected order: cocci, healthy, ncd, random, salmo');
 
-      if (_labels.length >= 4) {
+      if (_labels.length >= 5) {
         final orderMatch = _labels[0] == 'cocci' &&
             _labels[1] == 'healthy' &&
             _labels[2] == 'ncd' &&
-            _labels[3] == 'salmo';
+            _labels[3] == 'random' &&
+            _labels[4] == 'salmo';
         print(
             '   └─ Order validation: ${orderMatch ? "✅ CORRECT" : "⚠️ MISMATCH"}');
       }
@@ -199,9 +198,10 @@ class TFLiteImageClassifier {
       print('🖼️ Step 2/5: Preprocessing image...');
       print(
           '   └─ Target size: ${inputSize}x$inputSize (from model specification)');
-      print('   └─ Preprocessing: EfficientNetB0 preprocess_input');
-      print('   └─ Normalization: (pixel / 127.5) - 1.0 → Range: [-1.0, 1.0]');
-      // Preprocess image - returns Float32List [1, 224, 224, 3]
+      print('   └─ Preprocessing: Stretch resize to 300x300, RGB format');
+      print('   └─ Normalization: NONE - pixel values 0.0-255.0 Float32');
+      print('   └─ ⚠️ CRITICAL: Do NOT divide by 255, model handles normalization internally');
+      // Preprocess image - returns Float32List [1, 300, 300, 3]
       final inputTensor = await _preprocessImage(imageFile);
       print('✅ Image preprocessing completed');
 
@@ -210,9 +210,9 @@ class TFLiteImageClassifier {
       final outputTensors = _interpreter!.getOutputTensors();
       final outputShape = outputTensors[0].shape;
 
-      // Create output buffer: [1, 5] for 5 classes (model outputs 5, we'll use first 4)
+      // Create output buffer: [1, 5] for 5 classes (cocci, healthy, ncd, random, salmo)
       final outputSize = outputShape.reduce((a, b) => a * b);
-      print('   └─ Model output size: $outputSize classes');
+      print('   └─ Model output size: $outputSize classes (expected: 5)');
 
       // TFLite expects List<List<double>> for output shape [1, 4]
       var output =
@@ -347,115 +347,39 @@ class TFLiteImageClassifier {
         }
       }
 
-      // Verify output is valid (model outputs 5 classes, we have 4 labels)
-      // The 5th class might be "irrelevant" or "unknown" - we'll ignore it
-      if (probabilities.length < 4) {
+      // Verify output is valid (model outputs 5 classes: cocci, healthy, ncd, random, salmo)
+      if (probabilities.length != 5) {
         print(
-            '❌ ERROR: Expected at least 4 outputs, got ${probabilities.length}');
+            '❌ ERROR: Expected 5 outputs, got ${probabilities.length}');
         throw Exception(
-            'Expected at least 4 outputs, got ${probabilities.length}');
+            'Expected 5 outputs, got ${probabilities.length}');
       }
 
       // CRITICAL: Log ALL 5 classes before processing
-      print('   └─ 📊 ALL MODEL OUTPUTS (before processing):');
-      for (int i = 0; i < probabilities.length; i++) {
-        print('      [$i] ${(probabilities[i] * 100).toStringAsFixed(2)}%');
+      print('   └─ 📊 ALL MODEL OUTPUTS (5 classes with softmax applied):');
+      for (int i = 0; i < probabilities.length && i < _labels.length; i++) {
+        final label = i < _labels.length ? _labels[i] : 'unknown';
+        print('      [$i] $label: ${(probabilities[i] * 100).toStringAsFixed(2)}%');
       }
 
-      if (probabilities.length == 5) {
-        print('   └─ ⚠️ Model outputs 5 classes (we have 4 labels)');
-        print('   └─ Analyzing which class has highest probability...');
-
-        // Find the index with highest probability
-        int maxIdx = 0;
-        double maxProb = probabilities[0];
-        for (int i = 1; i < probabilities.length; i++) {
-          if (probabilities[i] > maxProb) {
-            maxIdx = i;
-            maxProb = probabilities[i];
-          }
-        }
-        print(
-            '   └─ Highest probability: Index $maxIdx with ${(maxProb * 100).toStringAsFixed(2)}%');
-
-        // POSSIBLE FIX: If index 4 has high probability, it might be salmonella!
-        // The model might have order: [0]=cocci, [1]=healthy, [2]=ncd, [3]=unknown, [4]=salmo
-        // OR: [0]=cocci, [1]=healthy, [2]=ncd, [3]=salmo, [4]=unknown
-        // We need to check which mapping works
-
-        // Try mapping: If index 4 > index 3, maybe salmo is at index 4
-        if (probabilities[4] > probabilities[3] && probabilities[4] > 0.2) {
-          print(
-              '   └─ ⚠️ DETECTED: Index 4 has higher probability than index 3!');
-          print(
-              '   └─ ⚠️ HYPOTHESIS: Model order might be [0]=cocci, [1]=healthy, [2]=ncd, [3]=unknown, [4]=salmo');
-          print('   └─ 🔄 REMAPPING: Using index 4 as salmo, ignoring index 3');
-
-          // Remap: [0]=cocci, [1]=healthy, [2]=ncd, [4]=salmo (skip index 3)
-          final remappedSum = probabilities[0] +
-              probabilities[1] +
-              probabilities[2] +
-              probabilities[4];
-          probabilities = [
-            probabilities[0] / remappedSum, // cocci
-            probabilities[1] / remappedSum, // healthy
-            probabilities[2] / remappedSum, // ncd
-            probabilities[4] / remappedSum, // salmo (from index 4)
-          ];
-          print('   └─ ✅ Remapped probabilities: [cocci, healthy, ncd, salmo]');
-          print(
-              '   └─ ✅ New sum: ${probabilities.reduce((a, b) => a + b).toStringAsFixed(6)}');
-        } else {
-          print(
-              '   └─ Using standard mapping: [0]=cocci, [1]=healthy, [2]=ncd, [3]=salmo');
-          print('   └─ Taking first 4 classes: cocci, healthy, ncd, salmo');
-
-          // Take only first 4 classes (cocci, healthy, ncd, salmo)
-          final first4Sum = probabilities[0] +
-              probabilities[1] +
-              probabilities[2] +
-              probabilities[3];
-          print(
-              '   └─ Sum of first 4 classes: ${first4Sum.toStringAsFixed(6)}');
-          print(
-              '   └─ 5th class probability: ${(probabilities[4] * 100).toStringAsFixed(2)}%');
-
-          // Renormalize first 4 classes to sum to 1.0
-          probabilities = [
-            probabilities[0] / first4Sum,
-            probabilities[1] / first4Sum,
-            probabilities[2] / first4Sum,
-            probabilities[3] / first4Sum,
-          ];
-          print(
-              '   └─ ✅ Normalized first 4 classes, new sum: ${probabilities.reduce((a, b) => a + b).toStringAsFixed(6)}');
-        }
-      } else if (probabilities.length != 4) {
-        print('   └─ ⚠️ Unexpected number of outputs: ${probabilities.length}');
-      }
-
-      print(
-          '   └─ ✅ Output validation passed: ${probabilities.length} classes');
+      print('   └─ ✅ Output validation passed: ${probabilities.length} classes');
 
       // DEBUG: Print probabilities with label names to verify order
       print('📊 DEBUG - Final probabilities after processing:');
-      print(
-          '  Index 0 (cocci): ${(probabilities[0] * 100).toStringAsFixed(2)}%');
-      print(
-          '  Index 1 (healthy): ${(probabilities[1] * 100).toStringAsFixed(2)}%');
-      print('  Index 2 (ncd): ${(probabilities[2] * 100).toStringAsFixed(2)}%');
-      print(
-          '  Index 3 (salmo): ${(probabilities[3] * 100).toStringAsFixed(2)}%');
+      for (int i = 0; i < probabilities.length && i < _labels.length; i++) {
+        print('  Index $i (${_labels[i]}): ${(probabilities[i] * 100).toStringAsFixed(2)}%');
+      }
 
       // Verify labels match notebook order
-      if (_labels.length >= 4) {
+      if (_labels.length >= 5) {
         print(
-            '📊 Labels order: ${_labels[0]}, ${_labels[1]}, ${_labels[2]}, ${_labels[3]}');
-        print('📊 Expected: cocci, healthy, ncd, salmo');
+            '📊 Labels order: ${_labels[0]}, ${_labels[1]}, ${_labels[2]}, ${_labels[3]}, ${_labels[4]}');
+        print('📊 Expected: cocci, healthy, ncd, random, salmo');
         if (_labels[0] != 'cocci' ||
             _labels[1] != 'healthy' ||
             _labels[2] != 'ncd' ||
-            _labels[3] != 'salmo') {
+            _labels[3] != 'random' ||
+            _labels[4] != 'salmo') {
           print('⚠️ WARNING: Labels order mismatch!');
         }
       }
@@ -473,10 +397,9 @@ class TFLiteImageClassifier {
     }
   }
 
-  /// Preprocess image: decode, resize, normalize, convert to tensor
-  /// EfficientNetB0 preprocessing: Uses tf.keras.applications.efficientnet.preprocess_input
-  /// This scales pixels to [-1.0, 1.0] range: (pixel / 127.5) - 1.0
-  /// Returns Float32List tensor: [1, 224, 224, 3] (batch, height, width, channels)
+  /// Preprocess image: decode, resize, convert to tensor
+  /// Model contract: 300x300 RGB, Float32 values 0.0-255.0 (NO normalization)
+  /// Returns Float32List tensor: [1, 300, 300, 3] (batch, height, width, channels)
   Future<Float32List> _preprocessImage(File imageFile) async {
     print('   └─ Step 2.1: Reading image file...');
     // Read and decode image
@@ -491,8 +414,9 @@ class TFLiteImageClassifier {
     }
     print('      └─ ✅ Image decoded: ${image.width}x${image.height} pixels');
 
-    print('   └─ Step 2.2: Resizing image to $inputSize x $inputSize...');
-    // Resize image to model input size (224x224) - EfficientNetB0 standard
+    print('   └─ Step 2.2: Resizing image to $inputSize x $inputSize (STRETCH)...');
+    print('      └─ ⚠️ CRITICAL: Using STRETCH resize (not center crop) to match training');
+    // Resize image to model input size (300x300) - STRETCH to match training
     final resizedImage = img.copyResize(
       image,
       width: inputSize,
@@ -502,22 +426,20 @@ class TFLiteImageClassifier {
     print(
         '      └─ ✅ Image resized: ${resizedImage.width}x${resizedImage.height}');
 
-    print(
-        '   └─ Step 2.3: Normalizing pixels (EfficientNetB0 preprocessing)...');
-    print('      └─ Formula: (pixel / 127.5) - 1.0');
-    print('      └─ Target range: [-1.0, 1.0]');
-    // Create Float32List buffer for input tensor [1, 224, 224, 3]
-    // EfficientNetB0 preprocess_input: scales to [-1.0, 1.0] range
-    // Formula: (pixel / 127.5) - 1.0
+    print('   └─ Step 2.3: Converting pixels to Float32 (0.0-255.0 range)...');
+    print('      └─ ⚠️ CRITICAL: NO normalization - pixel values stay in 0.0-255.0 range');
+    print('      └─ Model handles normalization internally via EfficientNetB3 layers');
+    // Create Float32List buffer for input tensor [1, 300, 300, 3]
+    // Model contract: Float32 values 0.0-255.0 (NOT normalized, NOT divided by 255)
     var inputBytes = Float32List(1 * inputSize * inputSize * 3);
     var buffer = Float32List.view(inputBytes.buffer);
     int pixelIndex = 0;
 
-    // Convert image pixels to buffer with EfficientNetB0 preprocessing
-    // CRITICAL: Use preprocess_input formula: (pixel / 127.5) - 1.0
-    // This gives range [-1.0, 1.0] instead of [0.0, 1.0]
+    // Convert image pixels to buffer WITHOUT normalization
+    // CRITICAL: Keep pixel values in 0.0-255.0 range (Float32)
+    // Do NOT divide by 255, do NOT normalize to [-1.0, 1.0]
     // Pixel order: row-major (height first, then width)
-    // For EfficientNetB0: [batch, height, width, channels] = [1, 224, 224, 3]
+    // Format: [batch, height, width, channels] = [1, 300, 300, 3]
     // So we iterate height (i) then width (j), then channels (RGB)
     bool debugPrinted = false;
     final preprocessStart = Stopwatch()..start();
@@ -531,30 +453,21 @@ class TFLiteImageClassifier {
           print('      └─ Sample pixel at (x=$j, y=$i):');
           print(
               '         └─ Original RGB: (${pixel.r}, ${pixel.g}, ${pixel.b})');
-          final preprocessedR = (pixel.r / 127.5) - 1.0;
-          final preprocessedG = (pixel.g / 127.5) - 1.0;
-          final preprocessedB = (pixel.b / 127.5) - 1.0;
           print(
-              '         └─ Preprocessed: (${preprocessedR.toStringAsFixed(3)}, ${preprocessedG.toStringAsFixed(3)}, ${preprocessedB.toStringAsFixed(3)})');
+              '         └─ Float32 RGB: (${pixel.r.toDouble()}, ${pixel.g.toDouble()}, ${pixel.b.toDouble()})');
           debugPrinted = true;
         }
 
-        // EfficientNetB0 preprocess_input: (pixel / 127.5) - 1.0
-        // This matches tf.keras.applications.efficientnet.preprocess_input
-        // Store as RGB (Red, Green, Blue) - standard order
-        // NOTE: If model uses different preprocessing, this might need adjustment
-        final normalizedR = (pixel.r / 127.5) - 1.0;
-        final normalizedG = (pixel.g / 127.5) - 1.0;
-        final normalizedB = (pixel.b / 127.5) - 1.0;
-
-        buffer[pixelIndex++] = normalizedR; // Red channel
-        buffer[pixelIndex++] = normalizedG; // Green channel
-        buffer[pixelIndex++] = normalizedB; // Blue channel
+        // Store as RGB Float32 values in 0.0-255.0 range (NO normalization)
+        // This matches the training pipeline: tf.image.decode_image + tf.cast(..., tf.float32)
+        buffer[pixelIndex++] = pixel.r.toDouble(); // Red channel (0-255)
+        buffer[pixelIndex++] = pixel.g.toDouble(); // Green channel (0-255)
+        buffer[pixelIndex++] = pixel.b.toDouble(); // Blue channel (0-255)
       }
     }
     preprocessStart.stop();
     print(
-        '      └─ ✅ Normalization completed in ${preprocessStart.elapsedMilliseconds}ms');
+        '      └─ ✅ Conversion completed in ${preprocessStart.elapsedMilliseconds}ms');
     print('      └─ Total pixels processed: ${inputSize * inputSize}');
 
     // DEBUG: Check buffer range and sample values
@@ -563,15 +476,15 @@ class TFLiteImageClassifier {
     final avgVal = buffer.reduce((a, b) => a + b) / buffer.length;
     print('   └─ Step 2.4: Validating preprocessed buffer...');
     print('      └─ Buffer size: ${buffer.length} values');
-    print('      └─ Value range: [$minVal, $maxVal] (expected: [-1.0, 1.0])');
+    print('      └─ Value range: [$minVal, $maxVal] (expected: [0.0, 255.0])');
     print(
-        '      └─ Range validation: ${minVal >= -1.0 && maxVal <= 1.0 ? "✅ CORRECT" : "⚠️ OUT OF RANGE"}');
+        '      └─ Range validation: ${minVal >= 0.0 && maxVal <= 255.0 ? "✅ CORRECT" : "⚠️ OUT OF RANGE"}');
     print('      └─ Average value: ${avgVal.toStringAsFixed(6)}');
     print(
         '      └─ First 6 values: [${buffer[0].toStringAsFixed(3)}, ${buffer[1].toStringAsFixed(3)}, ${buffer[2].toStringAsFixed(3)}, ${buffer[3].toStringAsFixed(3)}, ${buffer[4].toStringAsFixed(3)}, ${buffer[5].toStringAsFixed(3)}]');
 
-    // Return Float32List - TFLite will handle the shape [1, 224, 224, 3]
-    // The buffer is already in correct format: sequential RGB values
+    // Return Float32List - TFLite will handle the shape [1, 300, 300, 3]
+    // The buffer is already in correct format: sequential RGB values in 0.0-255.0 range
     return inputBytes;
   }
 
@@ -611,8 +524,6 @@ class TFLiteImageClassifier {
           '         ${isBest ? "🏆" : "  "} [$i] $label → ${displayName}: ${(probabilities[i] * 100).toStringAsFixed(2)}%');
     }
 
-    // Since Gemini confirmed it's faeces, always mark as relevant
-    final isIrrelevant = false;
 
     // Get label
     final labelKey =
@@ -621,6 +532,9 @@ class TFLiteImageClassifier {
     // Map to display name
     final diseaseName = _diseaseNameMap[labelKey] ?? labelKey;
     final isHealthy = diseaseName == 'Healthy';
+    
+    // Check if image is irrelevant (random class)
+    final isIrrelevant = labelKey == 'random';
 
     // Normalize confidence (ensure it's between 0 and 1)
     final confidence = bestScore.clamp(0.0, 1.0);
@@ -636,13 +550,16 @@ class TFLiteImageClassifier {
     // Get recommendations
     final recommendations = _getRecommendations(diseaseName);
 
+    // If random class is detected, mark as irrelevant
+    final finalIsIrrelevant = isIrrelevant || (labelKey == 'random' && confidence > 0.5);
+    
     return DiseaseAnalysisResult(
       diseaseType: diseaseName,
       confidence: confidence,
       isHealthy: isHealthy,
       recommendations: recommendations,
       analysisDetails: analysisDetails,
-      isIrrelevant: isIrrelevant,
+      isIrrelevant: finalIsIrrelevant,
     );
   }
 
@@ -682,6 +599,12 @@ class TFLiteImageClassifier {
           'Enhance biosecurity and sanitation measures',
           'Monitor flock closely for systemic signs',
           'Consider antibiotic treatment under veterinary guidance',
+        ];
+
+      case 'Random/Irrelevant':
+        return [
+          'Please upload an image of chicken faeces for accurate disease detection.',
+          'The image should show chicken droppings/faeces clearly.',
         ];
 
       default:
